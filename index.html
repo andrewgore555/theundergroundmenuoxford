@@ -26,6 +26,7 @@
     .rating button{min-width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:#fff;cursor:pointer}
     .rating button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
     .empty{color:var(--muted);text-align:center;padding:26px}
+    .loading{color:var(--muted);font-size:14px;padding:12px 0}
     footer{color:var(--muted);font-size:12px;text-align:center;padding:26px}
   </style>
 </head>
@@ -45,6 +46,7 @@
         <option value="avg">Sort: Highest Average</option>
         <option value="name">Sort: A → Z</option>
       </select>
+      <span id="loading" class="loading" style="display:none;">Loading…</span>
     </div>
     <div id="tableWrap" class="panel">
       <div id="menuTitle" style="font-weight:600;margin:2px 0 8px;"></div>
@@ -62,7 +64,7 @@
   </footer>
 
   <script>
-    /* ========================= EDIT YOUR MENUS HERE ========================= */
+    /* ========================= YOUR MENUS ========================= */
     const PLACES = [
       { id: 'p1', name: 'Bagel and Deli', items: [
         { id: 'p1_m1', name: 'Alumni' },
@@ -209,12 +211,16 @@
         { id: 'p2_m59', name: 'Mac n’ Cheese Bites' },
       ]},
     ];
-    /* ====================================================================== */
+    /* ======================= END MENUS ======================= */
 
     // Your Sheet.best endpoint (shared votes are saved/loaded here)
     const SHEET_ENDPOINT = "https://api.sheetbest.com/sheets/949d15b8-8118-406d-966e-a636cbff8f35";
 
-    // Per-device anonymous id so a re-vote replaces the previous one
+    // Tuning knobs
+    const DECIMALS = 2;       // average display precision
+    const REFRESH_MS = 30000; // cache lifespan (30s)
+
+    // Per-device anonymous id so a re-vote replaces the previous one (logically)
     const UID_KEY = 'underground_uid_v1';
     let uid = localStorage.getItem(UID_KEY);
     if (!uid) {
@@ -222,26 +228,80 @@
       localStorage.setItem(UID_KEY, uid);
     }
 
-    // State / elements
+    // Elements
     let activePlaceId = (PLACES[0] && PLACES[0].id) || '';
     const chipsEl = document.getElementById('placeChips');
     const menuTitleEl = document.getElementById('menuTitle');
     const tbodyEl = document.getElementById('tbody');
     const searchEl = document.getElementById('search');
     const sortEl = document.getElementById('sort');
+    const loadingEl = document.getElementById('loading');
 
     const getPlace = id => PLACES.find(p => String(p.id) === String(id));
     const itemsFor = id => (getPlace(id)?.items || []).map(it => ({...it}));
 
+    /* ====================== SPEED OPTIMIZATIONS ====================== */
+    let allRowsCache = [];
+    let lastFetch = 0;
+    let aggregatesCache = null; // { [placeId]: { [itemId]: { sum, count, byUid } } }
+
+    function showLoading(on){ loadingEl.style.display = on ? 'inline-block' : 'none'; }
+
+    async function refreshVotes(force = false) {
+      const now = Date.now();
+      if (!force && aggregatesCache && (now - lastFetch) < REFRESH_MS) return aggregatesCache;
+
+      showLoading(true);
+      try {
+        const res = await fetch(SHEET_ENDPOINT, { cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to fetch votes');
+        allRowsCache = await res.json();
+        aggregatesCache = buildAggregates(allRowsCache);
+        lastFetch = now;
+        return aggregatesCache;
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // Build once per fetch: latest vote per (placeId,itemId,uid) -> sums/counts
+    function buildAggregates(rows){
+      const latest = new Map(); // key: placeId::itemId::uid -> {rating, ts}
+      for (const r of rows){
+        const placeId = String(r.placeId || '').trim();
+        const itemId  = String(r.itemId  || '').trim();
+        const user    = String(r.uid     || '').trim();
+        const rating  = Number(r.rating  || 0);
+        const ts      = Number(r.updatedAt || 0);
+        if (!placeId || !itemId || !user || !(rating>=1 && rating<=10) || !Number.isFinite(ts)) continue;
+        const key = `${placeId}::${itemId}::${user}`;
+        const prev = latest.get(key);
+        if (!prev || ts > prev.ts) latest.set(key, { rating, ts });
+      }
+      // Aggregate to place -> item
+      const byPlace = {};
+      latest.forEach((v, key)=>{
+        const [placeId, itemId, user] = key.split('::');
+        byPlace[placeId] ??= {};
+        const slot = byPlace[placeId][itemId] ??= { sum:0, count:0, byUid:{} };
+        // If same uid+item saved multiple times here (shouldn't), keep last — latest map already ensured that.
+        slot.sum += v.rating; slot.count += 1; slot.byUid[user] = v.rating;
+      });
+      return byPlace;
+    }
+    /* ==================== END SPEED OPTIMIZATIONS ==================== */
+
     function renderChips(){
       chipsEl.innerHTML = '';
+      const frag = document.createDocumentFragment();
       PLACES.forEach(p=>{
         const b = document.createElement('button');
         b.className = 'chip' + (p.id===activePlaceId?' active':'');
         b.textContent = p.name;
         b.onclick = ()=>{ activePlaceId = p.id; searchEl.value=''; loadVotesAndRender(); };
-        chipsEl.appendChild(b);
+        frag.appendChild(b);
       });
+      chipsEl.appendChild(frag);
     }
 
     function ratingControl(item, myRating, onVote){
@@ -260,47 +320,17 @@
     function sortItems(items, mode){
       const a = items.slice();
       if (mode === 'name') a.sort((x,y)=>x.name.localeCompare(y.name));
-      else a.sort((x,y)=> (y.avg||0) - (x.avg||0));
+      else a.sort((x,y)=> (y.avg||0) - (x.avg||0)); // highest avg first
       return a;
     }
 
     // ---- Google Sheets I/O (via Sheet.best) ----
-    async function getAllVotes(){
-      const res = await fetch(SHEET_ENDPOINT);
-      if (!res.ok) throw new Error('Failed to fetch votes');
-      return await res.json(); // array of rows
-    }
-
     async function postVote(row){
       await fetch(SHEET_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify([row]) // sheet.best accepts array of rows
       });
-    }
-
-    // Aggregate votes: latest vote per (itemId, uid)
-    function aggregateVotes(rows, placeId){
-      rows = rows.filter(r => String(r.placeId) === String(placeId));
-      const latest = new Map(); // itemId -> Map(uid -> {rating, ts})
-      rows.forEach(r=>{
-        const itemId = String(r.itemId || '').trim();
-        const user = String(r.uid || '').trim();
-        const rating = Number(r.rating || 0);
-        const ts = Number(r.updatedAt || 0);
-        if (!itemId || !user || !rating) return;
-        if (!latest.has(itemId)) latest.set(itemId, new Map());
-        const m = latest.get(itemId);
-        const prev = m.get(user);
-        if (!prev || ts > prev.ts) m.set(user, { rating, ts });
-      });
-      const result = {}; // itemId -> {sum, count, byUid}
-      latest.forEach((m, itemId)=>{
-        let sum=0, count=0, byUid={};
-        m.forEach(({rating,ts}, user)=>{ sum+=rating; count++; byUid[user]=rating; });
-        result[itemId] = { sum, count, byUid };
-      });
-      return result;
     }
 
     async function upsertVote(placeId, itemId, rating){
@@ -314,19 +344,18 @@
       await postVote(row);
     }
 
-    async function loadVotesAndRender(){
+    async function loadVotesAndRender({ forceFetch = false } = {}){
       renderChips();
       const place = getPlace(activePlaceId);
       if (!place){ tbodyEl.innerHTML = ''; return; }
       menuTitleEl.textContent = `Menu: ${place.name}`;
 
-      let rows = [];
-      try { rows = await getAllVotes(); } catch(e){ console.error(e); }
-      const agg = aggregateVotes(rows, place.id);
+      const agg = await refreshVotes(forceFetch);
+      const placeAgg = agg[place.id] || {};
 
       const q = (searchEl.value||'').trim().toLowerCase();
       let items = itemsFor(place.id).map(it=>{
-        const a = agg[it.id] || { sum:0, count:0, byUid:{} };
+        const a = placeAgg[it.id] || { sum:0, count:0, byUid:{} };
         const avg = a.count ? (a.sum / a.count) : 0;
         const myRating = a.byUid?.[uid] ? Number(a.byUid[uid]) : undefined;
         return { ...it, avg, count:a.count, myRating };
@@ -335,36 +364,48 @@
       if (q) items = items.filter(i => i.name.toLowerCase().includes(q));
       items = sortItems(items, sortEl.value);
 
-      tbodyEl.innerHTML = '';
+      const frag = document.createDocumentFragment();
       if (!items.length){
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 4; td.className='empty'; td.textContent='No matching items.';
-        tr.appendChild(td); tbodyEl.appendChild(tr); return;
+        tr.appendChild(td); frag.appendChild(tr);
+      } else {
+        for (const item of items){
+          const tr = document.createElement('tr');
+          const tdName = document.createElement('td'); tdName.textContent = item.name;
+          const tdAvg  = document.createElement('td'); tdAvg.textContent = item.count ? item.avg.toFixed(DECIMALS) : '—';
+          const tdCnt  = document.createElement('td'); tdCnt.textContent = String(item.count);
+          const tdRate = document.createElement('td');
+          tdRate.appendChild(ratingControl(item, item.myRating, async (n)=>{
+            try {
+              await upsertVote(place.id, item.id, n);
+              await loadVotesAndRender({ forceFetch: true }); // re-fetch just once after posting
+            } catch (e) {
+              alert('Could not save your vote. Please try again.');
+              console.error(e);
+            }
+          }));
+          tr.append(tdName, tdAvg, tdCnt, tdRate);
+          frag.appendChild(tr);
+        }
       }
-
-      items.forEach(item=>{
-        const tr = document.createElement('tr');
-        const tdName = document.createElement('td'); tdName.textContent = item.name;
-        const tdAvg  = document.createElement('td'); tdAvg.textContent = item.count ? item.avg.toFixed(2) : '—';
-        const tdCnt  = document.createElement('td'); tdCnt.textContent = String(item.count);
-        const tdRate = document.createElement('td');
-        tdRate.appendChild(ratingControl(item, item.myRating, async (n)=>{
-          try {
-            await upsertVote(place.id, item.id, n);
-            await loadVotesAndRender();
-          } catch (e) {
-            alert('Could not save your vote. Try again.');
-            console.error(e);
-          }
-        }));
-        tr.append(tdName, tdAvg, tdCnt, tdRate);
-        tbodyEl.appendChild(tr);
-      });
+      tbodyEl.innerHTML = '';
+      tbodyEl.appendChild(frag);
     }
 
-    searchEl.addEventListener('input', loadVotesAndRender);
-    sortEl.addEventListener('change', loadVotesAndRender);
+    // Debounced search; sorting is cheap
+    let searchTimer;
+    searchEl.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => loadVotesAndRender(), 200);
+    });
+    sortEl.addEventListener('change', () => loadVotesAndRender());
+
+    // Gentle background refresh every REFRESH_MS to catch new votes from others
+    setInterval(() => loadVotesAndRender({ forceFetch: true }), REFRESH_MS);
+
+    // First render
     loadVotesAndRender();
   </script>
 </body>
