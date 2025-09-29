@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The Underground Menu</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    header {
+      text-align: center;
+      padding: 20px;
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    h1 {
+      margin: 0;
+      font-size: 2.2rem;
+      font-weight: 800;
+    }
+    .sub {
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .chips {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .chip {
+      padding: 8px 14px;
+      border: 1px solid #e5e7eb;
+      border-radius: 999px;
+      cursor: pointer;
+      background: white;
+    }
+    .chip.active {
+      background: #0f172a;
+      color: white;
+    }
+    main {
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 0 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      border-bottom: 1px solid #e5e7eb;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background: #f1f5f9;
+      font-weight: 600;
+    }
+    .rating button {
+      margin: 2px;
+      padding: 6px 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .rating button.active {
+      background: #0f172a;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>The Underground Menu</h1>
+    <div class="sub">Community ratings for local favorites — Oxford, Ohio</div>
+    <div id="placeChips" class="chips"></div>
+  </header>
+
+  <main id="content"></main>
+
+  <footer style="text-align:center; color:#64748b; font-size:12px; margin:30px 0;">
+    One vote per item per device — you can change your vote anytime.
+  </footer>
+
+  <script>
+    // --- Restaurants & menu items (edit this section) ---
+    const PLACES = [
+      { id: 'p1', name: 'Sunset Slice', items: [
+        { id: 'p1_m1', name: 'Margherita' },
+        { id: 'p1_m2', name: 'Pepperoni' },
+        { id: 'p1_m3', name: 'BBQ Chicken' },
+      ]},
+      { id: 'p2', name: 'Pho & Co.', items: [
+        { id: 'p2_m1', name: 'Pho Tai' },
+        { id: 'p2_m2', name: 'Banh Mi (Pork)' },
+        { id: 'p2_m3', name: 'Spring Rolls' },
+      ]},
+    ];
+
+    let tallies = JSON.parse(localStorage.getItem('votes') || '{}');
+    let myVotes = JSON.parse(localStorage.getItem('myvotes') || '{}');
+    let activePlaceId = PLACES[0].id;
+
+    function save() {
+      localStorage.setItem('votes', JSON.stringify(tallies));
+      localStorage.setItem('myvotes', JSON.stringify(myVotes));
+    }
+
+    function renderChips() {
+      const wrap = document.getElementById('placeChips');
+      wrap.innerHTML = '';
+      PLACES.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'chip' + (p.id===activePlaceId ? ' active':'');
+        btn.textContent = p.name;
+        btn.onclick = () => { activePlaceId = p.id; render(); };
+        wrap.appendChild(btn);
+      });
+    }
+
+    function ratingControl(item) {
+      const div = document.createElement('div');
+      div.className = 'rating';
+      for (let n=1;n<=10;n++) {
+        const b = document.createElement('button');
+        b.textContent = n;
+        if (myVotes[item.id] === n) b.classList.add('active');
+        b.onclick = () => {
+          const prev = myVotes[item.id];
+          let rec = tallies[item.id] || {sum:0,count:0};
+          if (prev) rec.sum -= prev;
+          else rec.count++;
+          rec.sum += n;
+          tallies[item.id] = rec;
+          myVotes[item.id] = n;
+          save();
+          render();
+        };
+        div.appendChild(b);
+      }
+      return div;
+    }
+
+    function renderMenu(place) {
+      const content = document.getElementById('content');
+      content.innerHTML = `<h2>${place.name} Menu</h2>`;
+      const table = document.createElement('table');
+      table.innerHTML = `
+        <thead>
+          <tr><th>Item</th><th>Average</th><th>Votes</th><th>Your Rating</th></tr>
+        </thead>
+        <tbody></tbody>
+      `;
+      const tbody = table.querySelector('tbody');
+      place.items.forEach(item => {
+        const rec = tallies[item.id] || {sum:0,count:0};
+        const avg = rec.count ? (rec.sum/rec.count).toFixed(2) : '—';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${item.name}</td>
+                        <td>${avg}</td>
+                        <td>${rec.count}</td>`;
+        const tdRate = document.createElement('td');
+        tdRate.appendChild(ratingControl(item));
+        tr.appendChild(tdRate);
+        tbody.appendChild(tr);
+      });
+      content.appendChild(table);
+    }
+
+    function render() {
+      renderChips();
+      renderMenu(PLACES.find(p => p.id === activePlaceId));
+    }
+
+    render();
+  </script>
+</body>
+</html>
