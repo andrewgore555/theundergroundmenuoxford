@@ -2,320 +2,370 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>The Underground Menu</title>
   <style>
-    body {
-      font-family: system-ui, sans-serif;
-      margin: 0;
-      background: #f8fafc;
-      color: #0f172a;
-    }
-    header {
-      text-align: center;
-      padding: 20px;
-      background: white;
-      border-bottom: 1px solid #e5e7eb;
-    }
-    h1 {
-      margin: 0;
-      font-size: 2.2rem;
-      font-weight: 800;
-    }
-    .sub {
-      color: #64748b;
-      margin-top: 4px;
-    }
-    .chips {
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin: 12px 0;
-    }
-    .chip {
-      padding: 8px 14px;
-      border: 1px solid #e5e7eb;
-      border-radius: 999px;
-      cursor: pointer;
-      background: white;
-    }
-    .chip.active {
-      background: #0f172a;
-      color: white;
-    }
-    main {
-      max-width: 800px;
-      margin: 20px auto;
-      padding: 0 16px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
-    th, td {
-      border-bottom: 1px solid #e5e7eb;
-      padding: 8px;
-      text-align: left;
-    }
-    th {
-      background: #f1f5f9;
-      font-weight: 600;
-    }
-    .rating button {
-      margin: 2px;
-      padding: 6px 8px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    .rating button.active {
-      background: #0f172a;
-      color: white;
-    }
+    :root{--bg:#f8fafc;--panel:#fff;--ink:#0f172a;--muted:#64748b;--border:#e5e7eb;--accent:#111827;}
+    *{box-sizing:border-box}body{margin:0;font-family:system-ui,Segoe UI,Roboto,Inter,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+    header{position:sticky;top:0;background:#ffffffd6;backdrop-filter:blur(6px);border-bottom:1px solid var(--border)}
+    .container{max-width:960px;margin:0 auto;padding:16px}
+    h1{margin:6px 0 2px;text-align:center;font-weight:800;letter-spacing:.2px;font-size:clamp(28px,5vw,42px)}
+    .sub{text-align:center;color:var(--muted);margin:4px 0 10px}
+    .chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:8px 0 2px}
+    .chip{border:1px solid var(--border);background:var(--panel);padding:8px 12px;border-radius:999px;cursor:pointer}
+    .chip.active{background:var(--accent);border-color:var(--accent);color:#fff}
+    main{max-width:960px;margin:0 auto;padding:16px}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .grow{flex:1 1 220px}
+    input[type="search"],select{padding:10px 12px;border-radius:10px;border:1px solid var(--border);width:100%;background:#fff}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:10px;border-bottom:1px solid var(--border);text-align:left}
+    th{background:#f1f5f9;color:#334155}
+    .rating{display:flex;gap:6px;flex-wrap:wrap}
+    .rating button{min-width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:#fff;cursor:pointer}
+    .rating button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .empty{color:var(--muted);text-align:center;padding:26px}
+    footer{color:var(--muted);font-size:12px;text-align:center;padding:26px}
   </style>
 </head>
 <body>
   <header>
-    <h1>The Underground Menu</h1>
-    <div class="sub">Community ratings for local favorites — Oxford, Ohio</div>
-    <div id="placeChips" class="chips"></div>
+    <div class="container">
+      <h1>The Underground Menu</h1>
+      <div class="sub">Community ratings for local favorites — Oxford, Ohio</div>
+      <div id="placeChips" class="chips" role="tablist" aria-label="Restaurants"></div>
+    </div>
   </header>
 
-  <main id="content"></main>
+  <main class="container">
+    <div class="panel row" style="margin-bottom:12px;">
+      <input id="search" class="grow" type="search" placeholder="Search items in this menu…">
+      <select id="sort">
+        <option value="avg">Sort: Highest Average</option>
+        <option value="name">Sort: A → Z</option>
+      </select>
+    </div>
+    <div id="tableWrap" class="panel">
+      <div id="menuTitle" style="font-weight:600;margin:2px 0 8px;"></div>
+      <table>
+        <thead>
+          <tr><th style="width:45%">Item</th><th style="width:15%">Average</th><th style="width:10%">Votes</th><th>Rate (1–10)</th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </main>
 
-  <footer style="text-align:center; color:#64748b; font-size:12px; margin:30px 0;">
-    One vote per item per device — you can change your vote anytime.
+  <footer>
+    One vote per item per device (tracked by a random ID). Averages are shared for everyone via Google Sheets.
   </footer>
 
   <script>
-    // --- Restaurants & menu items (edit this section) ---
+    /* ========================= EDIT YOUR MENUS HERE ========================= */
     const PLACES = [
-  { id: 'p1', name: 'Bagel and Deli', items: [
-    { id: 'p1_m1', name: 'Alumni' },
-    { id: 'p1_m2', name: 'Balcony Bagel' },
-    { id: 'p1_m3', name: "Frank's Bagel" },
-    { id: 'p1_m4', name: 'Hungry Heifer' },
-    { id: 'p1_m5', name: "Missy's Bloodbath" },
-    { id: 'p1_m6', name: "Parker's Alternative" },
-    { id: 'p1_m7', name: 'Philly Bagel' },
-    { id: 'p1_m8', name: 'Sportsfest' },
-    { id: 'p1_m9', name: 'Terrapin' },
-    { id: 'p1_m10', name: "Bowler's Bagel" },
-    { id: 'p1_m11', name: 'Chicago Deli' },
-    { id: 'p1_m12', name: "Ozzie's Favorite" },
-    { id: 'p1_m13', name: 'Paul Reuben' },
-    { id: 'p1_m14', name: 'Redhawk Reuben' },
-    { id: 'p1_m15', name: 'All American Bagel' },
-    { id: 'p1_m16', name: 'Ham and Swisser' },
-    { id: 'p1_m17', name: 'MILF Bagel' },
-    { id: 'p1_m18', name: 'BLT' },
-    { id: 'p1_m19', name: 'Dread Lock Bagel' },
-    { id: 'p1_m20', name: 'I.U. Bagel' },
-    { id: 'p1_m21', name: "Philippa's Phetish" },
-    { id: 'p1_m22', name: 'Blonde Bombshell' },
-    { id: 'p1_m23', name: "Chip's Special" },
-    { id: 'p1_m24', name: 'Crunch and Munch' },
-    { id: 'p1_m25', name: 'Gandy Dancer' },
-    { id: 'p1_m26', name: 'Howard Bagel' },
-    { id: 'p1_m27', name: 'Konrad Bagel' },
-    { id: 'p1_m28', name: 'Kool Jules' },
-    { id: 'p1_m29', name: 'Mr. Turkey' },
-    { id: 'p1_m30', name: 'Messy Katie' },
-    { id: 'p1_m31', name: "Sara's Secret" },
-    { id: 'p1_m32', name: 'Salty Hor' },
-    { id: 'p1_m33', name: 'Szczerbiak Bagel' },
-    { id: 'p1_m34', name: 'Turkey Hummer' },
-    { id: 'p1_m35', name: 'Wham-O' },
-    { id: 'p1_m36', name: 'Xanadu' },
-    { id: 'p1_m37', name: "Ben's Best" },
-    { id: 'p1_m38', name: 'Big Meeks' },
-    { id: 'p1_m39', name: 'Bluegrass Bagel' },
-    { id: 'p1_m40', name: 'Bob-E-Que Bagel' },
-    { id: 'p1_m41', name: "Class of '98 Riot Bagel" },
-    { id: 'p1_m42', name: 'Doyle Rules Bagel' },
-    { id: 'p1_m43', name: 'Fat Albert Bagel' },
-    { id: 'p1_m44', name: 'Get Swanked Bagel' },
-    { id: 'p1_m45', name: 'Italian Bagel' },
-    { id: 'p1_m46', name: 'Neopolitan' },
-    { id: 'p1_m47', name: 'Pig in the Mud' },
-    { id: 'p1_m48', name: 'Squid' },
-    { id: 'p1_m49', name: 'Tonya Harding Club' },
-    { id: 'p1_m50', name: 'Urban Cowboy Bagel' },
-    { id: 'p1_m51', name: 'Vertigo Bagel' },
-    { id: 'p1_m52', name: 'Donkey Punch' },
-    { id: 'p1_m53', name: '20/20' },
-    { id: 'p1_m54', name: "Sam's Sunrise" },
-    { id: 'p1_m55', name: 'The Sausage Fest' },
-    { id: 'p1_m56', name: 'The Original Breakfast Bagel' },
-    { id: 'p1_m57', name: 'Super Deluxe Breakfast Bagel' },
-    { id: 'p1_m58', name: "Dank 'n' Eggs" },
-    { id: 'p1_m59', name: 'The Good Morning Sausage' },
-    { id: 'p1_m60', name: 'The Western Bagel' },
-    { id: 'p1_m61', name: 'The Hangover Helper' },
-    { id: 'p1_m62', name: "Aunt Beanie's" },
-    { id: 'p1_m63', name: 'Chia Bagel' },
-    { id: 'p1_m64', name: 'China Cat Sunflower' },
-    { id: 'p1_m65', name: 'Earth Day' },
-    { id: 'p1_m66', name: 'Greg-O Bagel' },
-    { id: 'p1_m67', name: "Kim's Veggie Pizza" },
-    { id: 'p1_m68', name: 'L.A. Delight' },
-    { id: 'p1_m69', name: 'La Dolce Bagel' },
-    { id: 'p1_m70', name: 'QuesaBagel' },
-    { id: 'p1_m71', name: 'Random Bagel' },
-    { id: 'p1_m72', name: 'Shakedown' },
-    { id: 'p1_m73', name: 'Tommy and Donny' },
-    { id: 'p1_m74', name: 'Veggie Delight' },
-    { id: 'p1_m75', name: 'Weight Watchers' },
-    { id: 'p1_m76', name: 'David Letterman Bagel' },
-    { id: 'p1_m77', name: 'After Burner' },
-    { id: 'p1_m78', name: 'Risser Bagel' },
-    { id: 'p1_m79', name: 'Pizza Bagel' },
-    { id: 'p1_m80', name: 'Randy Ayers Bagel' },
-  ]},
+      { id: 'p1', name: 'Bagel and Deli', items: [
+        { id: 'p1_m1', name: 'Alumni' },
+        { id: 'p1_m2', name: 'Balcony Bagel' },
+        { id: 'p1_m3', name: "Frank's Bagel" },
+        { id: 'p1_m4', name: 'Hungry Heifer' },
+        { id: 'p1_m5', name: "Missy's Bloodbath" },
+        { id: 'p1_m6', name: "Parker's Alternative" },
+        { id: 'p1_m7', name: 'Philly Bagel' },
+        { id: 'p1_m8', name: 'Sportsfest' },
+        { id: 'p1_m9', name: 'Terrapin' },
+        { id: 'p1_m10', name: "Bowler's Bagel" },
+        { id: 'p1_m11', name: 'Chicago Deli' },
+        { id: 'p1_m12', name: "Ozzie's Favorite" },
+        { id: 'p1_m13', name: 'Paul Reuben' },
+        { id: 'p1_m14', name: 'Redhawk Reuben' },
+        { id: 'p1_m15', name: 'All American Bagel' },
+        { id: 'p1_m16', name: 'Ham and Swisser' },
+        { id: 'p1_m17', name: 'MILF Bagel' },
+        { id: 'p1_m18', name: 'BLT' },
+        { id: 'p1_m19', name: 'Dread Lock Bagel' },
+        { id: 'p1_m20', name: 'I.U. Bagel' },
+        { id: 'p1_m21', name: "Philippa's Phetish" },
+        { id: 'p1_m22', name: 'Blonde Bombshell' },
+        { id: 'p1_m23', name: "Chip's Special" },
+        { id: 'p1_m24', name: 'Crunch and Munch' },
+        { id: 'p1_m25', name: 'Gandy Dancer' },
+        { id: 'p1_m26', name: 'Howard Bagel' },
+        { id: 'p1_m27', name: 'Konrad Bagel' },
+        { id: 'p1_m28', name: 'Kool Jules' },
+        { id: 'p1_m29', name: 'Mr. Turkey' },
+        { id: 'p1_m30', name: 'Messy Katie' },
+        { id: 'p1_m31', name: "Sara's Secret" },
+        { id: 'p1_m32', name: 'Salty Hor' },
+        { id: 'p1_m33', name: 'Szczerbiak Bagel' },
+        { id: 'p1_m34', name: 'Turkey Hummer' },
+        { id: 'p1_m35', name: 'Wham-O' },
+        { id: 'p1_m36', name: 'Xanadu' },
+        { id: 'p1_m37', name: "Ben's Best" },
+        { id: 'p1_m38', name: 'Big Meeks' },
+        { id: 'p1_m39', name: 'Bluegrass Bagel' },
+        { id: 'p1_m40', name: 'Bob-E-Que Bagel' },
+        { id: 'p1_m41', name: "Class of '98 Riot Bagel" },
+        { id: 'p1_m42', name: 'Doyle Rules Bagel' },
+        { id: 'p1_m43', name: 'Fat Albert Bagel' },
+        { id: 'p1_m44', name: 'Get Swanked Bagel' },
+        { id: 'p1_m45', name: 'Italian Bagel' },
+        { id: 'p1_m46', name: 'Neopolitan' },
+        { id: 'p1_m47', name: 'Pig in the Mud' },
+        { id: 'p1_m48', name: 'Squid' },
+        { id: 'p1_m49', name: 'Tonya Harding Club' },
+        { id: 'p1_m50', name: 'Urban Cowboy Bagel' },
+        { id: 'p1_m51', name: 'Vertigo Bagel' },
+        { id: 'p1_m52', name: 'Donkey Punch' },
+        { id: 'p1_m53', name: '20/20' },
+        { id: 'p1_m54', name: "Sam's Sunrise" },
+        { id: 'p1_m55', name: 'The Sausage Fest' },
+        { id: 'p1_m56', name: 'The Original Breakfast Bagel' },
+        { id: 'p1_m57', name: 'Super Deluxe Breakfast Bagel' },
+        { id: 'p1_m58', name: "Dank 'n' Eggs" },
+        { id: 'p1_m59', name: 'The Good Morning Sausage' },
+        { id: 'p1_m60', name: 'The Western Bagel' },
+        { id: 'p1_m61', name: 'The Hangover Helper' },
+        { id: 'p1_m62', name: "Aunt Beanie's" },
+        { id: 'p1_m63', name: 'Chia Bagel' },
+        { id: 'p1_m64', name: 'China Cat Sunflower' },
+        { id: 'p1_m65', name: 'Earth Day' },
+        { id: 'p1_m66', name: 'Greg-O Bagel' },
+        { id: 'p1_m67', name: "Kim's Veggie Pizza" },
+        { id: 'p1_m68', name: 'L.A. Delight' },
+        { id: 'p1_m69', name: 'La Dolce Bagel' },
+        { id: 'p1_m70', name: 'QuesaBagel' },
+        { id: 'p1_m71', name: 'Random Bagel' },
+        { id: 'p1_m72', name: 'Shakedown' },
+        { id: 'p1_m73', name: 'Tommy and Donny' },
+        { id: 'p1_m74', name: 'Veggie Delight' },
+        { id: 'p1_m75', name: 'Weight Watchers' },
+        { id: 'p1_m76', name: 'David Letterman Bagel' },
+        { id: 'p1_m77', name: 'After Burner' },
+        { id: 'p1_m78', name: 'Risser Bagel' },
+        { id: 'p1_m79', name: 'Pizza Bagel' },
+        { id: 'p1_m80', name: 'Randy Ayers Bagel' },
+      ]},
 
-  { id: 'p2', name: 'Skippers', items: [
-    { id: 'p2_m1', name: 'Italian Beef' },
-    { id: 'p2_m2', name: 'Italian Sausage' },
-    { id: 'p2_m3', name: 'Italian Beef and Sausage Combo' },
-    { id: 'p2_m4', name: 'Chicago Style Pure Beef Hot Dog' },
-    { id: 'p2_m5', name: 'Chili Cheese Dog' },
-    { id: 'p2_m6', name: 'Steak Hoagie' },
-    { id: 'p2_m7', name: 'Not-A-Club Sandwich' },
-    { id: 'p2_m8', name: 'Reuben' },
-    { id: 'p2_m9', name: 'Corned Beef Sandwich' },
-    { id: 'p2_m10', name: 'Philly Cheesesteak Sandwich' },
-    { id: 'p2_m11', name: 'B.L.T.' },
-    { id: 'p2_m12', name: 'Shrimp Basket' },
-    { id: 'p2_m13', name: 'Breaded Fish Sandwich' },
-    { id: 'p2_m14', name: 'Chicken Tenders' },
-    { id: 'p2_m15', name: 'Charbroiled Chicken Sandwich' },
-    { id: 'p2_m16', name: 'Spicy Breaded Chicken Sandwich' },
-    { id: 'p2_m17', name: 'Chicken Parmesan Sandwich' },
-    { id: 'p2_m18', name: 'Chicken Cordon Bleu Sandwich' },
-    { id: 'p2_m19', name: 'Southwest Chicken Sandwich (BBQ)' },
-    { id: 'p2_m20', name: 'Southwest Chicken Sandwich (Spicy)' },
-    { id: 'p2_m21', name: 'Southwest Chicken Sandwich (Hot)' },
-    { id: 'p2_m22', name: 'Southwest Chicken Sandwich (Garlic Parm)' },
-    { id: 'p2_m23', name: 'Chicken Salad Sandwich' },
-    { id: 'p2_m24', name: 'Veggie Pita' },
-    { id: 'p2_m25', name: 'Chicken Fajita Pita' },
-    { id: 'p2_m26', name: 'Turkey Bacon Club' },
-    { id: 'p2_m27', name: 'Gyro' },
-    { id: 'p2_m28', name: 'Chicken Gyro' },
-    { id: 'p2_m29', name: 'Gyro Platter' },
-    { id: 'p2_m30', name: 'Chicken Gyro Platter' },
-    { id: 'p2_m31', name: 'Classic Cheeseburger' },
-    { id: 'p2_m32', name: 'Classic Hamburger' },
-    { id: 'p2_m33', name: 'Double Cheeseburger' },
-    { id: 'p2_m34', name: 'Double Hamburger' },
-    { id: 'p2_m35', name: 'Bacon Hamburger' },
-    { id: 'p2_m36', name: 'Patty Melt' },
-    { id: 'p2_m37', name: 'Pizza Burger' },
-    { id: 'p2_m38', name: 'Turkey Burger' },
-    { id: 'p2_m39', name: 'Basket of Waffle Fries' },
-    { id: 'p2_m40', name: 'Basket of Regular Fries' },
-    { id: 'p2_m41', name: 'Nacho Supreme' },
-    { id: 'p2_m42', name: 'Mozzarella Sticks' },
-    { id: 'p2_m43', name: 'Jalapeño Poppers' },
-    { id: 'p2_m44', name: 'Onion Rings' },
-    { id: 'p2_m45', name: 'Garlic Breaded Mushrooms' },
-    { id: 'p2_m46', name: 'Pita Pizza' },
-    { id: 'p2_m47', name: 'French Bread Pizza' },
-    { id: 'p2_m48', name: 'Soft Bread Pretzel' },
-    { id: 'p2_m49', name: 'Chicken Wings (BBQ)' },
-    { id: 'p2_m50', name: 'Chicken Wings (Spicy)' },
-    { id: 'p2_m51', name: 'Chicken Wings (Hot)' },
-    { id: 'p2_m52', name: 'Chicken Wings (Garlic Parmesan)' },
-    { id: 'p2_m53', name: 'Boneless Chicken Wings (BBQ)' },
-    { id: 'p2_m54', name: 'Boneless Chicken Wings (Spicy)' },
-    { id: 'p2_m55', name: 'Boneless Chicken Wings (Hot)' },
-    { id: 'p2_m56', name: 'Boneless Chicken Wings (Garlic Parmesan)' },
-    { id: 'p2_m57', name: 'Bowl of Chili' },
-    { id: 'p2_m58', name: 'Bowl of Soup' },
-    { id: 'p2_m59', name: 'Mac n’ Cheese Bites' },
-  ]},
-];
+      { id: 'p2', name: 'Skippers', items: [
+        { id: 'p2_m1', name: 'Italian Beef' },
+        { id: 'p2_m2', name: 'Italian Sausage' },
+        { id: 'p2_m3', name: 'Italian Beef and Sausage Combo' },
+        { id: 'p2_m4', name: 'Chicago Style Pure Beef Hot Dog' },
+        { id: 'p2_m5', name: 'Chili Cheese Dog' },
+        { id: 'p2_m6', name: 'Steak Hoagie' },
+        { id: 'p2_m7', name: 'Not-A-Club Sandwich' },
+        { id: 'p2_m8', name: 'Reuben' },
+        { id: 'p2_m9', name: 'Corned Beef Sandwich' },
+        { id: 'p2_m10', name: 'Philly Cheesesteak Sandwich' },
+        { id: 'p2_m11', name: 'B.L.T.' },
+        { id: 'p2_m12', name: 'Shrimp Basket' },
+        { id: 'p2_m13', name: 'Breaded Fish Sandwich' },
+        { id: 'p2_m14', name: 'Chicken Tenders' },
+        { id: 'p2_m15', name: 'Charbroiled Chicken Sandwich' },
+        { id: 'p2_m16', name: 'Spicy Breaded Chicken Sandwich' },
+        { id: 'p2_m17', name: 'Chicken Parmesan Sandwich' },
+        { id: 'p2_m18', name: 'Chicken Cordon Bleu Sandwich' },
+        { id: 'p2_m19', name: 'Southwest Chicken Sandwich (BBQ)' },
+        { id: 'p2_m20', name: 'Southwest Chicken Sandwich (Spicy)' },
+        { id: 'p2_m21', name: 'Southwest Chicken Sandwich (Hot)' },
+        { id: 'p2_m22', name: 'Southwest Chicken Sandwich (Garlic Parmesan)' },
+        { id: 'p2_m23', name: 'Chicken Salad Sandwich' },
+        { id: 'p2_m24', name: 'Veggie Pita' },
+        { id: 'p2_m25', name: 'Chicken Fajita Pita' },
+        { id: 'p2_m26', name: 'Turkey Bacon Club' },
+        { id: 'p2_m27', name: 'Gyro' },
+        { id: 'p2_m28', name: 'Chicken Gyro' },
+        { id: 'p2_m29', name: 'Gyro Platter' },
+        { id: 'p2_m30', name: 'Chicken Gyro Platter' },
+        { id: 'p2_m31', name: 'Classic Cheeseburger' },
+        { id: 'p2_m32', name: 'Classic Hamburger' },
+        { id: 'p2_m33', name: 'Double Cheeseburger' },
+        { id: 'p2_m34', name: 'Double Hamburger' },
+        { id: 'p2_m35', name: 'Bacon Hamburger' },
+        { id: 'p2_m36', name: 'Patty Melt' },
+        { id: 'p2_m37', name: 'Pizza Burger' },
+        { id: 'p2_m38', name: 'Turkey Burger' },
+        { id: 'p2_m39', name: 'Basket of Waffle Fries' },
+        { id: 'p2_m40', name: 'Basket of Regular Fries' },
+        { id: 'p2_m41', name: 'Nacho Supreme' },
+        { id: 'p2_m42', name: 'Mozzarella Sticks' },
+        { id: 'p2_m43', name: 'Jalapeño Poppers' },
+        { id: 'p2_m44', name: 'Onion Rings' },
+        { id: 'p2_m45', name: 'Garlic Breaded Mushrooms' },
+        { id: 'p2_m46', name: 'Pita Pizza' },
+        { id: 'p2_m47', name: 'French Bread Pizza' },
+        { id: 'p2_m48', name: 'Soft Bread Pretzel' },
+        { id: 'p2_m49', name: 'Chicken Wings (BBQ)' },
+        { id: 'p2_m50', name: 'Chicken Wings (Spicy)' },
+        { id: 'p2_m51', name: 'Chicken Wings (Hot)' },
+        { id: 'p2_m52', name: 'Chicken Wings (Garlic Parmesan)' },
+        { id: 'p2_m53', name: 'Boneless Chicken Wings (BBQ)' },
+        { id: 'p2_m54', name: 'Boneless Chicken Wings (Spicy)' },
+        { id: 'p2_m55', name: 'Boneless Chicken Wings (Hot)' },
+        { id: 'p2_m56', name: 'Boneless Chicken Wings (Garlic Parmesan)' },
+        { id: 'p2_m57', name: 'Bowl of Chili' },
+        { id: 'p2_m58', name: 'Bowl of Soup' },
+        { id: 'p2_m59', name: 'Mac n’ Cheese Bites' },
+      ]},
+    ];
+    /* ====================================================================== */
 
+    // Your Sheet.best endpoint (shared votes are saved/loaded here)
+    const SHEET_ENDPOINT = "https://api.sheetbest.com/sheets/949d15b8-8118-406d-966e-a636cbff8f35";
 
-
-    let tallies = JSON.parse(localStorage.getItem('votes') || '{}');
-    let myVotes = JSON.parse(localStorage.getItem('myvotes') || '{}');
-    let activePlaceId = PLACES[0].id;
-
-    function save() {
-      localStorage.setItem('votes', JSON.stringify(tallies));
-      localStorage.setItem('myvotes', JSON.stringify(myVotes));
+    // Per-device anonymous id so a re-vote replaces the previous one
+    const UID_KEY = 'underground_uid_v1';
+    let uid = localStorage.getItem(UID_KEY);
+    if (!uid) {
+      uid = crypto.randomUUID ? crypto.randomUUID() : (Date.now()+Math.random()).toString(36);
+      localStorage.setItem(UID_KEY, uid);
     }
 
-    function renderChips() {
-      const wrap = document.getElementById('placeChips');
-      wrap.innerHTML = '';
-      PLACES.forEach(p => {
-        const btn = document.createElement('button');
-        btn.className = 'chip' + (p.id===activePlaceId ? ' active':'');
-        btn.textContent = p.name;
-        btn.onclick = () => { activePlaceId = p.id; render(); };
-        wrap.appendChild(btn);
+    // State / elements
+    let activePlaceId = (PLACES[0] && PLACES[0].id) || '';
+    const chipsEl = document.getElementById('placeChips');
+    const menuTitleEl = document.getElementById('menuTitle');
+    const tbodyEl = document.getElementById('tbody');
+    const searchEl = document.getElementById('search');
+    const sortEl = document.getElementById('sort');
+
+    const getPlace = id => PLACES.find(p => String(p.id) === String(id));
+    const itemsFor = id => (getPlace(id)?.items || []).map(it => ({...it}));
+
+    function renderChips(){
+      chipsEl.innerHTML = '';
+      PLACES.forEach(p=>{
+        const b = document.createElement('button');
+        b.className = 'chip' + (p.id===activePlaceId?' active':'');
+        b.textContent = p.name;
+        b.onclick = ()=>{ activePlaceId = p.id; searchEl.value=''; loadVotesAndRender(); };
+        chipsEl.appendChild(b);
       });
     }
 
-    function ratingControl(item) {
+    function ratingControl(item, myRating, onVote){
       const div = document.createElement('div');
       div.className = 'rating';
-      for (let n=1;n<=10;n++) {
-        const b = document.createElement('button');
-        b.textContent = n;
-        if (myVotes[item.id] === n) b.classList.add('active');
-        b.onclick = () => {
-          const prev = myVotes[item.id];
-          let rec = tallies[item.id] || {sum:0,count:0};
-          if (prev) rec.sum -= prev;
-          else rec.count++;
-          rec.sum += n;
-          tallies[item.id] = rec;
-          myVotes[item.id] = n;
-          save();
-          render();
-        };
-        div.appendChild(b);
+      for (let n=1;n<=10;n++){
+        const btn = document.createElement('button');
+        btn.textContent = String(n);
+        if (myRating === n) btn.classList.add('active');
+        btn.onclick = ()=> onVote(n);
+        div.appendChild(btn);
       }
       return div;
     }
 
-    function renderMenu(place) {
-      const content = document.getElementById('content');
-      content.innerHTML = `<h2>${place.name} Menu</h2>`;
-      const table = document.createElement('table');
-      table.innerHTML = `
-        <thead>
-          <tr><th>Item</th><th>Average</th><th>Votes</th><th>Your Rating</th></tr>
-        </thead>
-        <tbody></tbody>
-      `;
-      const tbody = table.querySelector('tbody');
-      place.items.forEach(item => {
-        const rec = tallies[item.id] || {sum:0,count:0};
-        const avg = rec.count ? (rec.sum/rec.count).toFixed(2) : '—';
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${item.name}</td>
-                        <td>${avg}</td>
-                        <td>${rec.count}</td>`;
-        const tdRate = document.createElement('td');
-        tdRate.appendChild(ratingControl(item));
-        tr.appendChild(tdRate);
-        tbody.appendChild(tr);
+    function sortItems(items, mode){
+      const a = items.slice();
+      if (mode === 'name') a.sort((x,y)=>x.name.localeCompare(y.name));
+      else a.sort((x,y)=> (y.avg||0) - (x.avg||0));
+      return a;
+    }
+
+    // ---- Google Sheets I/O (via Sheet.best) ----
+    async function getAllVotes(){
+      const res = await fetch(SHEET_ENDPOINT);
+      if (!res.ok) throw new Error('Failed to fetch votes');
+      return await res.json(); // array of rows
+    }
+
+    async function postVote(row){
+      await fetch(SHEET_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([row]) // sheet.best accepts array of rows
       });
-      content.appendChild(table);
     }
 
-    function render() {
+    // Aggregate votes: latest vote per (itemId, uid)
+    function aggregateVotes(rows, placeId){
+      rows = rows.filter(r => String(r.placeId) === String(placeId));
+      const latest = new Map(); // itemId -> Map(uid -> {rating, ts})
+      rows.forEach(r=>{
+        const itemId = String(r.itemId || '').trim();
+        const user = String(r.uid || '').trim();
+        const rating = Number(r.rating || 0);
+        const ts = Number(r.updatedAt || 0);
+        if (!itemId || !user || !rating) return;
+        if (!latest.has(itemId)) latest.set(itemId, new Map());
+        const m = latest.get(itemId);
+        const prev = m.get(user);
+        if (!prev || ts > prev.ts) m.set(user, { rating, ts });
+      });
+      const result = {}; // itemId -> {sum, count, byUid}
+      latest.forEach((m, itemId)=>{
+        let sum=0, count=0, byUid={};
+        m.forEach(({rating,ts}, user)=>{ sum+=rating; count++; byUid[user]=rating; });
+        result[itemId] = { sum, count, byUid };
+      });
+      return result;
+    }
+
+    async function upsertVote(placeId, itemId, rating){
+      const row = {
+        placeId,
+        itemId,
+        uid,
+        rating: String(rating),
+        updatedAt: String(Date.now())
+      };
+      await postVote(row);
+    }
+
+    async function loadVotesAndRender(){
       renderChips();
-      renderMenu(PLACES.find(p => p.id === activePlaceId));
+      const place = getPlace(activePlaceId);
+      if (!place){ tbodyEl.innerHTML = ''; return; }
+      menuTitleEl.textContent = `Menu: ${place.name}`;
+
+      let rows = [];
+      try { rows = await getAllVotes(); } catch(e){ console.error(e); }
+      const agg = aggregateVotes(rows, place.id);
+
+      const q = (searchEl.value||'').trim().toLowerCase();
+      let items = itemsFor(place.id).map(it=>{
+        const a = agg[it.id] || { sum:0, count:0, byUid:{} };
+        const avg = a.count ? (a.sum / a.count) : 0;
+        const myRating = a.byUid?.[uid] ? Number(a.byUid[uid]) : undefined;
+        return { ...it, avg, count:a.count, myRating };
+      });
+
+      if (q) items = items.filter(i => i.name.toLowerCase().includes(q));
+      items = sortItems(items, sortEl.value);
+
+      tbodyEl.innerHTML = '';
+      if (!items.length){
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4; td.className='empty'; td.textContent='No matching items.';
+        tr.appendChild(td); tbodyEl.appendChild(tr); return;
+      }
+
+      items.forEach(item=>{
+        const tr = document.createElement('tr');
+        const tdName = document.createElement('td'); tdName.textContent = item.name;
+        const tdAvg  = document.createElement('td'); tdAvg.textContent = item.count ? item.avg.toFixed(2) : '—';
+        const tdCnt  = document.createElement('td'); tdCnt.textContent = String(item.count);
+        const tdRate = document.createElement('td');
+        tdRate.appendChild(ratingControl(item, item.myRating, async (n)=>{
+          try {
+            await upsertVote(place.id, item.id, n);
+            await loadVotesAndRender();
+          } catch (e) {
+            alert('Could not save your vote. Try again.');
+            console.error(e);
+          }
+        }));
+        tr.append(tdName, tdAvg, tdCnt, tdRate);
+        tbodyEl.appendChild(tr);
+      });
     }
 
-    render();
+    searchEl.addEventListener('input', loadVotesAndRender);
+    sortEl.addEventListener('change', loadVotesAndRender);
+    loadVotesAndRender();
   </script>
 </body>
 </html>
